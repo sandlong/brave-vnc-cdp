@@ -1,0 +1,23 @@
+services:
+  brave-vnc-cdp:
+    build: .
+    container_name: brave-vnc-cdp
+    ports:
+      - "8080:8080"   # noVNC web UI
+      - "5900:5900"   # raw VNC
+      - "9222:9222"   # Chrome DevTools Protocol
+    environment:
+      TZ: Asia/Singapore
+      VNC_PASS: change-me
+      VNC_WIDTH: 1440
+      VNC_HEIGHT: 900
+      VNC_SHARED: "false"
+      START_URL: https://example.com
+      BRAVE_NO_SANDBOX: "true"
+      # BRAVE_ARGS: "--disable-gpu"
+    volumes:
+      - brave-data:/data
+    restart: unless-stopped
+
+volumes:
+  brave-data:

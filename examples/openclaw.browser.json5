@@ -1,0 +1,17 @@
+{
+  browser: {
+    enabled: true,
+    defaultProfile: "brave-local",
+    remoteCdpTimeoutMs: 30000,
+    remoteCdpHandshakeTimeoutMs: 45000,
+    ssrfPolicy: {
+      dangerouslyAllowPrivateNetwork: true,
+    },
+    profiles: {
+      brave-local: {
+        cdpUrl: "http://127.0.0.1:9222",
+        color: "#FB542B",
+      },
+    },
+  },
+}
