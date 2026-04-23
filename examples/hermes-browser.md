@@ -1,22 +1,22 @@
-Hermes can attach to the local Brave CDP endpoint exposed by this container.
+Hermes can attach to the local Chromium CDP endpoint exposed by this container.
 
 Typical flow:
 
-1. Start the container and confirm CDP is live:
+1. Start the container with `ENABLE_CDP=true` and confirm CDP is live:
 
    curl http://127.0.0.1:9222/json/version
 
-2. In Hermes CLI:
+2. In Hermes, point the browser CDP URL at:
 
-   /browser connect ws://127.0.0.1:9222/devtools/browser/<id>
+   BROWSER_CDP_URL=ws://127.0.0.1:9222
 
-   or, if Hermes supports the shorthand discovery flow in your version:
+   or connect manually with:
 
    /browser connect ws://127.0.0.1:9222
 
-3. Open noVNC in a browser to watch the live session:
+3. Open the Chromium web UI to watch the live session:
 
-   http://127.0.0.1:8080/vnc.html
+   https://127.0.0.1:3001/
 
 Important: if Hermes and OpenClaw both attach to the same browser at the same time,
 page focus and tab state can interfere with each other. Prefer one active controller

@@ -1,87 +1,96 @@
-# brave-vnc-cdp
+# chromium-selkies-cdp
 
-[![Docker publish](https://github.com/sandlong/brave-vnc-cdp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/sandlong/brave-vnc-cdp/actions/workflows/docker-publish.yml)
+[![Docker publish](https://github.com/sandlong/chromium-selkies-cdp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/sandlong/chromium-selkies-cdp/actions/workflows/docker-publish.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-A Docker image for **Brave Browser + noVNC + raw VNC + Chrome DevTools Protocol (CDP)**, intended for local browser automation on **Linux arm64/aarch64** as well as amd64.
+A very thin downstream image built on top of `lscr.io/linuxserver/chromium`, with one optional extra: enable Chromium CDP and forward it to port `9222` when requested.
 
-## What it provides
+## What changed from upstream
 
-- Official **Brave Browser** installed from Brave's Linux APT repository
-- **Xvfb** virtual display for headed browsing inside a container
-- **Openbox** lightweight desktop session
-- **x11vnc** server on port `5900`
-- **noVNC** web client on port `8080`
-- **CDP** endpoint on port `9222`
-- Persistent browser profile storage in `/data/profile`
+The base image stays `linuxserver/chromium`. This repository only adds `socat` plus a tiny startup wrapper.
+
+When `ENABLE_CDP=true`:
+
+- Chromium is started with a dedicated profile directory so Chrome 136+ remote debugging rules are satisfied.
+- Chromium listens for DevTools on loopback inside the container.
+- `socat` forwards container port `9222` to that internal loopback-only DevTools port.
+
+When `ENABLE_CDP=false`:
+
+- The container behaves like normal `linuxserver/chromium`.
+- No CDP listener is started.
 
 ## Quick start
 
-### Pull from GHCR
+### Docker Compose
+
+```yaml
+services:
+  chromium-selkies-cdp:
+    image: ghcr.io/sandlong/chromium-selkies-cdp:latest
+    ports:
+      - "3001:3001"
+      - "9222:9222"
+    environment:
+      TZ: Asia/Singapore
+      CUSTOM_USER: change-me
+      PASSWORD: change-me
+      ENABLE_CDP: "true"
+    volumes:
+      - chromium-config:/config
+    restart: unless-stopped
+
+volumes:
+  chromium-config:
+```
+
+Open the browser UI at `https://localhost:3001/`.
+
+Check CDP with:
 
 ```bash
-docker pull ghcr.io/sandlong/brave-vnc-cdp:latest
+curl http://127.0.0.1:9222/json/version
 ```
+
+For local automation clients that accept direct discovery, `ws://localhost:9222` is the intended endpoint.
 
 ### Docker run
 
 ```bash
 docker run -d \
-  --name brave-vnc-cdp \
-  -p 8080:8080 \
-  -p 5900:5900 \
+  --name chromium-selkies-cdp \
+  -p 3001:3001 \
   -p 9222:9222 \
   -e TZ=Asia/Singapore \
-  -e VNC_PASS='change-me-now' \
-  -e START_URL='https://example.com' \
-  -v brave-data:/data \
-  ghcr.io/sandlong/brave-vnc-cdp:latest
+  -e CUSTOM_USER=change-me \
+  -e PASSWORD=change-me \
+  -e ENABLE_CDP=true \
+  -v chromium-config:/config \
+  ghcr.io/sandlong/chromium-selkies-cdp:latest
 ```
 
-### Build locally
-
-```bash
-docker build -t brave-vnc-cdp .
-```
-
-### Docker Compose
-
-```bash
-docker compose up -d --build
-```
-
-## Environment variables
+## Environment variables added by this repo
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `TZ` | `UTC` | Container timezone |
-| `VNC_PASS` | `change-me` | Password for x11vnc |
-| `VNC_WIDTH` | `1440` | Virtual display width |
-| `VNC_HEIGHT` | `900` | Virtual display height |
-| `VNC_DEPTH` | `24` | Color depth |
-| `VNC_PORT` | `5900` | Raw VNC port |
-| `WEB_PORT` | `8080` | noVNC/websockify port |
-| `CDP_PORT` | `9222` | Chrome DevTools Protocol port |
-| `BRAVE_INTERNAL_CDP_PORT` | `9223` | Internal loopback CDP port used by Brave itself |
-| `VNC_SHARED` | `false` | Allow multiple VNC viewers |
-| `START_URL` | `about:blank` | Initial page to open |
-| `USER_DATA_DIR` | `/data/profile` | Persistent Brave profile path |
-| `BRAVE_NO_SANDBOX` | `true` | Add `--no-sandbox` inside container |
-| `BRAVE_ARGS` | empty | Extra Brave flags as a single string |
-| `DAILY_RESTART_AT` | empty | Restart the browser/container daily at `HH:MM` |
+| `ENABLE_CDP` | `false` | Enable CDP and port `9222` forwarding |
+| `CDP_PORT` | `9222` | External forwarded CDP port |
+| `CDP_INTERNAL_PORT` | `9223` | Internal loopback CDP port used by Chromium |
+| `CDP_PROFILE_DIR` | `/config/cdp-profile` | Profile path used when CDP is enabled |
+| `CDP_LOG_DIR` | `/config/log` | Log directory for the `socat` forwarder |
 
-## Maintenance
+## Important upstream variables you will still use
 
-### Daily Restart
+| Variable | Meaning |
+| --- | --- |
+| `CUSTOM_USER` / `PASSWORD` | Basic auth for the web UI |
+| `CHROME_CLI` | Extra Chromium flags passed through unchanged |
+| `TZ` | Timezone |
+| `SELKIES_MANUAL_WIDTH` / `SELKIES_MANUAL_HEIGHT` | Display size |
+| `PIXELFLUX_WAYLAND` | Upstream Wayland toggle |
 
-If `DAILY_RESTART_AT` is set (e.g., `04:00`), the container process will exit at that time. When combined with Docker's `restart: always` policy, this provides a clean, daily-refreshed browser instance without losing persistent data in `/data`.
+## Notes
 
-## Publishing
+This repo intentionally does not fork or reimplement the upstream desktop stack. It only layers a CDP-on-demand wrapper on top of `linuxserver/chromium` so upstream updates remain easy to track.
 
-This repository includes a GitHub Actions workflow that builds and publishes a multi-architecture image to GHCR for `linux/amd64` and `linux/arm64`.
-
-The workflow also runs on a daily schedule to catch upstream Brave updates. It checks the latest version available and only builds if a new version is detected.
-
-## Logs
-
-Runtime logs are written inside the container under `/var/log/brave-vnc-cdp/`.
+CDP access is effectively full browser control. Do not expose port `9222` directly to the public internet.

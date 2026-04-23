@@ -1,24 +1,22 @@
 services:
-  brave-vnc-cdp:
+  chromium-selkies-cdp:
     build: .
-    container_name: brave-vnc-cdp
+    container_name: chromium-selkies-cdp
     ports:
-      - "8080:8080"   # noVNC web UI
-      - "5900:5900"   # raw VNC
-      - "9222:9222"   # Chrome DevTools Protocol
+      - "3001:3001"   # Chromium web UI (HTTPS)
+      - "9222:9222"   # CDP, only live when ENABLE_CDP=true
     environment:
       TZ: Asia/Singapore
-      VNC_PASS: change-me
-      VNC_WIDTH: 1440
-      VNC_HEIGHT: 900
-      VNC_SHARED: "false"
-      START_URL: https://example.com
-      BRAVE_NO_SANDBOX: "true"
-      DAILY_RESTART_AT: "04:00"
-      # BRAVE_ARGS: "--disable-gpu"
+      CUSTOM_USER: change-me
+      PASSWORD: change-me
+      ENABLE_CDP: "true"
+      CDP_PORT: "9222"
+      # CHROME_CLI: "--disable-gpu"
+      # SELKIES_MANUAL_WIDTH: "1440"
+      # SELKIES_MANUAL_HEIGHT: "900"
     volumes:
-      - brave-data:/data
-    restart: unless-stopped # Also works with DAILY_RESTART_AT, but respects manual stop
+      - chromium-config:/config
+    restart: unless-stopped
 
 volumes:
-  brave-data:
+  chromium-config:

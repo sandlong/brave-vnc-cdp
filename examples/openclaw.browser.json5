@@ -1,16 +1,16 @@
 {
   browser: {
     enabled: true,
-    defaultProfile: "brave-local",
+    defaultProfile: "chromium-local",
     remoteCdpTimeoutMs: 30000,
     remoteCdpHandshakeTimeoutMs: 45000,
     ssrfPolicy: {
       dangerouslyAllowPrivateNetwork: true,
     },
     profiles: {
-      brave-local: {
+      chromium-local: {
         cdpUrl: "http://127.0.0.1:9222",
-        color: "#FB542B",
+        color: "#3B82F6",
       },
     },
   },
