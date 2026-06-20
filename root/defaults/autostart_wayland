@@ -1,2 +1,4 @@
 #!/bin/bash
-exec /usr/local/bin/start-cdp-chromium.sh --enable-features=UseOzonePlatform --ozone-platform=wayland
+# Wayland session -- enable Ozone/Wayland backend.
+exec /usr/local/bin/start-cdp-chromium.sh \
+  --enable-features=UseOzonePlatform --ozone-platform=wayland

@@ -1,2 +1,3 @@
 #!/bin/bash
+# X11 session -- no extra flags needed.
 exec /usr/local/bin/start-cdp-chromium.sh

@@ -8,6 +8,7 @@ RUN apt-get update \
 COPY root/ /
 
 RUN chmod +x \
+    /usr/local/lib/cdp-lib.sh \
     /usr/local/bin/start-cdp-chromium.sh \
     /defaults/autostart \
     /defaults/autostart_wayland
