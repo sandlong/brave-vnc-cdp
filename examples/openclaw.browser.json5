@@ -5,6 +5,9 @@
     remoteCdpTimeoutMs: 30000,
     remoteCdpHandshakeTimeoutMs: 45000,
     ssrfPolicy: {
+      // WARNING: This disables SSRF protection for private-network requests.
+      // Only use in trusted local-development environments where the browser
+      // cannot reach sensitive internal services.
       dangerouslyAllowPrivateNetwork: true,
     },
     profiles: {

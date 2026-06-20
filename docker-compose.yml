@@ -3,14 +3,15 @@ services:
     build: .
     container_name: chromium-selkies-cdp
     ports:
-      - "3001:3001"   # Chromium web UI (HTTPS)
-      - "9222:9222"   # CDP, only live when ENABLE_CDP=true
+      - "3001:3001"              # Chromium web UI (HTTPS)
+      - "127.0.0.1:9222:9222"   # CDP, localhost-only (full browser control)
     environment:
       TZ: Asia/Singapore
       CUSTOM_USER: change-me
       PASSWORD: change-me
       ENABLE_CDP: "true"
       CDP_PORT: "9222"
+      CDP_BIND_ADDRESS: "0.0.0.0"  # must be 0.0.0.0 inside container for Docker port mapping
       # CHROME_CLI: "--disable-gpu"
       # SELKIES_MANUAL_WIDTH: "1440"
       # SELKIES_MANUAL_HEIGHT: "900"

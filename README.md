@@ -30,12 +30,13 @@ services:
     image: ghcr.io/sandlong/chromium-selkies-cdp:latest
     ports:
       - "3001:3001"
-      - "9222:9222"
+      - "127.0.0.1:9222:9222"   # localhost-only; CDP is full browser control
     environment:
       TZ: Asia/Singapore
       CUSTOM_USER: change-me
       PASSWORD: change-me
       ENABLE_CDP: "true"
+      CDP_BIND_ADDRESS: "0.0.0.0"  # required inside container for Docker port mapping
     volumes:
       - chromium-config:/config
     restart: unless-stopped
@@ -60,11 +61,12 @@ For local automation clients that accept direct discovery, `ws://localhost:9222`
 docker run -d \
   --name chromium-selkies-cdp \
   -p 3001:3001 \
-  -p 9222:9222 \
+  -p 127.0.0.1:9222:9222 \
   -e TZ=Asia/Singapore \
   -e CUSTOM_USER=change-me \
   -e PASSWORD=change-me \
   -e ENABLE_CDP=true \
+  -e CDP_BIND_ADDRESS=0.0.0.0 \
   -v chromium-config:/config \
   ghcr.io/sandlong/chromium-selkies-cdp:latest
 ```
@@ -76,6 +78,7 @@ docker run -d \
 | `ENABLE_CDP` | `false` | Enable CDP and port `9222` forwarding |
 | `CDP_PORT` | `9222` | External forwarded CDP port |
 | `CDP_INTERNAL_PORT` | `9223` | Internal loopback CDP port used by Chromium |
+| `CDP_BIND_ADDRESS` | `127.0.0.1` | Address socat binds to inside the container. Set to `0.0.0.0` when using Docker port mapping; keep `127.0.0.1` for host-network mode |
 | `CDP_PROFILE_DIR` | `/config/cdp-profile` | Profile path used when CDP is enabled |
 | `CDP_LOG_DIR` | `/config/log` | Log directory for the `socat` forwarder |
 
@@ -89,8 +92,15 @@ docker run -d \
 | `SELKIES_MANUAL_WIDTH` / `SELKIES_MANUAL_HEIGHT` | Display size |
 | `PIXELFLUX_WAYLAND` | Upstream Wayland toggle |
 
+## Security
+
+**CDP = full browser control.** Anyone who can reach port `9222` can read cookies, inject JavaScript, and navigate to arbitrary URLs. Harden accordingly:
+
+- Always bind the CDP host port to `127.0.0.1` (as shown in the examples above) unless you explicitly need remote access.
+- If remote access is required, put a reverse proxy with authentication (e.g. mTLS, basic-auth, or a VPN) in front of port `9222`.
+- Never expose `9222` directly to the public internet.
+- The startup script validates `CDP_PORT`, `CDP_INTERNAL_PORT`, and `CDP_BIND_ADDRESS` at boot and will refuse to start if values are malformed.
+
 ## Notes
 
 This repo intentionally does not fork or reimplement the upstream desktop stack. It only layers a CDP-on-demand wrapper on top of `linuxserver/chromium` so upstream updates remain easy to track.
-
-CDP access is effectively full browser control. Do not expose port `9222` directly to the public internet.

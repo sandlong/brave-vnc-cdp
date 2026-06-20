@@ -5,8 +5,29 @@ ENABLE_CDP="${ENABLE_CDP:-false}"
 CHROME_CLI_RAW="${CHROME_CLI:-}"
 CDP_PORT="${CDP_PORT:-9222}"
 CDP_INTERNAL_PORT="${CDP_INTERNAL_PORT:-9223}"
+CDP_BIND_ADDRESS="${CDP_BIND_ADDRESS:-127.0.0.1}"
 CDP_PROFILE_DIR="${CDP_PROFILE_DIR:-/config/cdp-profile}"
 CDP_LOG_DIR="${CDP_LOG_DIR:-/config/log}"
+
+# --- Input validation --------------------------------------------------------
+is_valid_port() {
+  local port="$1"
+  [[ "$port" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 ))
+}
+
+if ! is_valid_port "$CDP_PORT"; then
+  echo "ERROR: CDP_PORT ('$CDP_PORT') is not a valid port number (1-65535)." >&2
+  exit 1
+fi
+if ! is_valid_port "$CDP_INTERNAL_PORT"; then
+  echo "ERROR: CDP_INTERNAL_PORT ('$CDP_INTERNAL_PORT') is not a valid port number (1-65535)." >&2
+  exit 1
+fi
+if [[ ! "$CDP_BIND_ADDRESS" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$CDP_BIND_ADDRESS" != "::" ]]; then
+  echo "ERROR: CDP_BIND_ADDRESS ('$CDP_BIND_ADDRESS') is not a valid IPv4 address." >&2
+  exit 1
+fi
+# -----------------------------------------------------------------------------
 
 read -r -a USER_CHROME_ARGS <<< "${CHROME_CLI_RAW}"
 EXTRA_ARGS=("$@")
@@ -20,7 +41,7 @@ is_true() {
 
 if is_true "$ENABLE_CDP"; then
   mkdir -p "$CDP_PROFILE_DIR" "$CDP_LOG_DIR"
-  socat TCP-LISTEN:"$CDP_PORT",bind=0.0.0.0,reuseaddr,fork TCP:127.0.0.1:"$CDP_INTERNAL_PORT" \
+  socat TCP-LISTEN:"$CDP_PORT",bind="$CDP_BIND_ADDRESS",reuseaddr,fork TCP:127.0.0.1:"$CDP_INTERNAL_PORT" \
     >"$CDP_LOG_DIR/cdp-socat.log" 2>&1 &
   EXTRA_ARGS+=(
     "--user-data-dir=$CDP_PROFILE_DIR"
