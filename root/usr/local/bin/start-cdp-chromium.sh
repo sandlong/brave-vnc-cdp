@@ -20,6 +20,15 @@ is_true() {
 
 if is_true "$ENABLE_CDP"; then
   mkdir -p "$CDP_PROFILE_DIR" "$CDP_LOG_DIR"
+
+  if ! touch "${CDP_PROFILE_DIR}/.cdp-write-test" 2>/dev/null; then
+    echo "start-cdp-chromium: cannot write to CDP_PROFILE_DIR=${CDP_PROFILE_DIR}" >&2
+    echo "start-cdp-chromium: uid=$(id -u) gid=$(id -g) path=$(ls -ld "$CDP_PROFILE_DIR" 2>&1 || true)" >&2
+    echo "start-cdp-chromium: fix host mount ownership or rely on init-cdp-profile" >&2
+    exit 1
+  fi
+  rm -f "${CDP_PROFILE_DIR}/.cdp-write-test"
+
   socat TCP-LISTEN:"$CDP_PORT",bind=0.0.0.0,reuseaddr,fork TCP:127.0.0.1:"$CDP_INTERNAL_PORT" \
     >"$CDP_LOG_DIR/cdp-socat.log" 2>&1 &
   EXTRA_ARGS+=(

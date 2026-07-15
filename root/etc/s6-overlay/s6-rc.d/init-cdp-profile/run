@@ -1,0 +1,49 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+# Ensure CDP profile/log dirs exist and are writable by abc before Chromium starts.
+# Host bind-mounts created by Docker are root-owned; linuxserver only lsiowns /config,
+# so a nested CDP_PROFILE_DIR can still be unwritable without this step.
+
+set -euo pipefail
+
+ENABLE_CDP="${ENABLE_CDP:-false}"
+CDP_PROFILE_DIR="${CDP_PROFILE_DIR:-/config/cdp-profile}"
+CDP_LOG_DIR="${CDP_LOG_DIR:-/config/log}"
+
+is_true() {
+  case "${1,,}" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Always make sure /config itself is owned by abc (idempotent; matches lsiown intent).
+if [[ -d /config ]]; then
+  lsiown abc:abc /config || chown abc:abc /config || true
+fi
+
+if ! is_true "$ENABLE_CDP"; then
+  echo "[init-cdp-profile] ENABLE_CDP is false; nothing to prepare."
+  exit 0
+fi
+
+echo "[init-cdp-profile] preparing CDP_PROFILE_DIR=${CDP_PROFILE_DIR} CDP_LOG_DIR=${CDP_LOG_DIR}"
+
+mkdir -p "$CDP_PROFILE_DIR" "$CDP_LOG_DIR"
+
+# Prefer lsiown (recursive, skips already-owned paths). Fall back to chown -R.
+if command -v lsiown >/dev/null 2>&1; then
+  lsiown abc:abc "$CDP_PROFILE_DIR" "$CDP_LOG_DIR" || chown -R abc:abc "$CDP_PROFILE_DIR" "$CDP_LOG_DIR"
+else
+  chown -R abc:abc "$CDP_PROFILE_DIR" "$CDP_LOG_DIR"
+fi
+
+# Fail early with a clear message if abc still cannot write.
+if ! s6-setuidgid abc touch "${CDP_PROFILE_DIR}/.cdp-write-test" 2>/dev/null; then
+  echo "[init-cdp-profile] ERROR: abc cannot write to ${CDP_PROFILE_DIR}"
+  ls -ld "$CDP_PROFILE_DIR" /config || true
+  exit 1
+fi
+rm -f "${CDP_PROFILE_DIR}/.cdp-write-test"
+
+echo "[init-cdp-profile] CDP profile dirs ready for abc ($(id -u abc):$(id -g abc))"
