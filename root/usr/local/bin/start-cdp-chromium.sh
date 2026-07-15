@@ -4,14 +4,15 @@ set -Eeuo pipefail
 # CDP-aware Chromium launcher for linuxserver/chromium (Selkies).
 #
 # Upstream /usr/bin/wrapped-chromium hardcodes a bare `--user-data-dir` with no
-# value. Chromium treats the next argv as that switch's value, so flags we append
-# (including --user-data-dir=/path and --remote-debugging-*) can be eaten or
-# dropped after relaunch. When ENABLE_CDP=true we therefore launch chromium
-# directly with an explicit valued --user-data-dir and CDP flags.
+# value, so appended CDP flags can be swallowed. When ENABLE_CDP=true we launch
+# chromium with an explicit valued --user-data-dir and loopback DevTools ports.
 #
-# /usr/bin/wrapped-chromium in this image is a shim that always re-enters this
-# script (so right-click menu / desktop entries also get CDP). The original
-# upstream launcher is preserved as /usr/bin/wrapped-chromium.real.
+# /usr/bin/wrapped-chromium in this image is a shim into this script (right-click
+# menu / desktop entries). Upstream original is preserved as wrapped-chromium.real.
+#
+# After a hard crash (commonly right after Sync "I am in"), Chromium leaves
+# Singleton* under the profile and /tmp. The next launch then exits immediately.
+# We clear those stale locks whenever no live browser process is present.
 
 ENABLE_CDP="${ENABLE_CDP:-false}"
 CHROME_CLI_RAW="${CHROME_CLI:-}"
@@ -19,7 +20,6 @@ CDP_PORT="${CDP_PORT:-9222}"
 CDP_INTERNAL_PORT="${CDP_INTERNAL_PORT:-9223}"
 CDP_PROFILE_DIR="${CDP_PROFILE_DIR:-/config/cdp-profile}"
 CDP_LOG_DIR="${CDP_LOG_DIR:-/config/log}"
-# Debian package launcher script -> /usr/lib/chromium/chromium
 CHROMIUM_BIN="${CHROMIUM_BIN:-/usr/bin/chromium}"
 UPSTREAM_WRAPPER="${UPSTREAM_WRAPPER:-/usr/bin/wrapped-chromium.real}"
 
@@ -33,19 +33,34 @@ is_true() {
   esac
 }
 
+# True only if a real browser binary is running (not wrappers / shells).
 chromium_running() {
-  # Match real browser processes only (not this script / wrappers / pgrep itself).
-  pgrep -f '/usr/lib/chromium/chromium' >/dev/null 2>&1
+  local pid comm
+  for pid in /proc/[0-9]*; do
+    [[ -r "$pid/comm" ]] || continue
+    comm=$(cat "$pid/comm" 2>/dev/null || true)
+    # Debian chromium main/children report comm as "chromium"
+    if [[ "$comm" == "chromium" ]]; then
+      # Exclude this shell / unrelated helpers by checking exe path when possible.
+      if [[ -r "$pid/cmdline" ]]; then
+        if tr '\0' '\n' < "$pid/cmdline" 2>/dev/null | grep -q '^/usr/lib/chromium/chromium$'; then
+          return 0
+        fi
+      fi
+    fi
+  done
+  return 1
 }
 
 clear_stale_singletons() {
   local dir="$1"
-  [[ -d "$dir" ]] || return 0
-  # Always safe when no live browser: leftover Singleton* after crash/black-screen
-  # makes the next launch exit immediately.
-  if ! chromium_running; then
+  if chromium_running; then
+    return 0
+  fi
+  if [[ -d "$dir" ]]; then
     rm -f "${dir}/Singleton"* 2>/dev/null || true
   fi
+  rm -rf /tmp/org.chromium.Chromium.* 2>/dev/null || true
 }
 
 if ! is_true "$ENABLE_CDP"; then
@@ -73,20 +88,23 @@ rm -f "${CDP_PROFILE_DIR}/.cdp-write-test"
 
 clear_stale_singletons "$CDP_PROFILE_DIR"
 
-# Replace any previous forwarder on CDP_PORT (container restart / watchdog / menu relaunch).
 if command -v fuser >/dev/null 2>&1; then
   fuser -k "${CDP_PORT}/tcp" >/dev/null 2>&1 || true
 else
   pkill -f "socat TCP-LISTEN:${CDP_PORT}," >/dev/null 2>&1 || true
 fi
-# brief settle so the port is free
 sleep 0.2
 
 socat TCP-LISTEN:"$CDP_PORT",bind=0.0.0.0,reuseaddr,fork TCP:127.0.0.1:"$CDP_INTERNAL_PORT" \
   >"$CDP_LOG_DIR/cdp-socat.log" 2>&1 &
 
-# Launch via Debian's /usr/bin/chromium (adds package flags) with a valued
-# --user-data-dir and loopback CDP. Never call wrapped-chromium.real here.
+# Keep a short launch breadcrumb for post-crash forensics.
+{
+  date -Is 2>/dev/null || date
+  echo "ENABLE_CDP=$ENABLE_CDP CDP_PROFILE_DIR=$CDP_PROFILE_DIR"
+  echo "args: ${EXTRA_ARGS[*]} ${USER_CHROME_ARGS[*]}"
+} >>"$CDP_LOG_DIR/cdp-launch.log" 2>/dev/null || true
+
 exec "$CHROMIUM_BIN" \
   --no-sandbox \
   --password-store=basic \
