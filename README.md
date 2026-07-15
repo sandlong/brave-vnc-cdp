@@ -12,14 +12,16 @@ The base image stays `linuxserver/chromium`. This repository only adds `socat`, 
 When `ENABLE_CDP=true`:
 
 - A root-side `init-cdp-profile` step creates `CDP_PROFILE_DIR` / `CDP_LOG_DIR` and chowns them to `abc` **before** Chromium starts. This means a host bind mount path can be created automatically by Docker (root-owned) and still work without a manual `mkdir`/`chown` on the host.
-- Chromium is launched **directly** (not via upstream `wrapped-chromium`) with an explicit valued `--user-data-dir=$CDP_PROFILE_DIR`. Upstream `wrapped-chromium` hardcodes a bare `--user-data-dir` with no value; Chromium then treats the next argv as that path and can swallow/drop `--remote-debugging-*` flags.
+- Chromium is launched **directly** with an explicit valued `--user-data-dir=$CDP_PROFILE_DIR`. Upstream `wrapped-chromium` hardcodes a bare `--user-data-dir` with no value; Chromium then treats the next argv as that path and can swallow/drop `--remote-debugging-*` flags. The original upstream script is kept as `wrapped-chromium.real`.
+- `/usr/bin/wrapped-chromium` is replaced by a shim that always calls `start-cdp-chromium.sh`, so **right-click menu / manual relaunch** also keep the CDP profile instead of falling back to `/config/.config/chromium`.
+- Labwc menu defaults and any existing `menu.xml` / `menu.xml.bak` are rewritten to the CDP launcher on boot.
 - Dedicated profile is required so Chrome 136+ remote debugging rules are satisfied.
 - Chromium listens for DevTools on loopback (`127.0.0.1:$CDP_INTERNAL_PORT`).
 - `socat` forwards container port `$CDP_PORT` (default `9222`) to that internal loopback-only DevTools port.
 
 When `ENABLE_CDP=false`:
 
-- The container behaves like normal `linuxserver/chromium` (still uses upstream `wrapped-chromium`).
+- The container behaves like normal `linuxserver/chromium` via `wrapped-chromium.real`.
 - No CDP listener is started.
 
 ## One-shot docker run (no pre-created host folders)

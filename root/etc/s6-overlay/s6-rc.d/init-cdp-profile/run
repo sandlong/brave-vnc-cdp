@@ -1,8 +1,8 @@
 #!/usr/bin/with-contenv bash
 # shellcheck shell=bash
-# Ensure CDP profile/log dirs exist and are writable by abc before Chromium starts.
-# Host bind-mounts created by Docker are root-owned; linuxserver only lsiowns /config,
-# so a nested CDP_PROFILE_DIR can still be unwritable without this step.
+# Prepare CDP profile dirs and force desktop menu entries onto our launcher.
+# Host bind-mounts created by Docker are root-owned; existing volumes may still
+# have menu.xml / menu.xml.bak pointing at bare wrapped-chromium.
 
 set -euo pipefail
 
@@ -22,8 +22,28 @@ if [[ -d /config ]]; then
   lsiown abc:abc /config || chown abc:abc /config || true
 fi
 
+# Point labwc right-click "Chromium" at our launcher on every boot.
+# Upstream init restores menu.xml from menu.xml.bak, so patch both.
+patch_menu_file() {
+  local f="$1"
+  [[ -f "$f" ]] || return 0
+  if grep -q 'wrapped-chromium' "$f" 2>/dev/null; then
+    sed -i \
+      -e 's|/usr/bin/wrapped-chromium --enable-features=UseOzonePlatform --ozone-platform=wayland|/usr/local/bin/start-cdp-chromium.sh --enable-features=UseOzonePlatform --ozone-platform=wayland|g' \
+      -e 's|/usr/bin/wrapped-chromium|/usr/local/bin/start-cdp-chromium.sh|g' \
+      "$f"
+    chown abc:abc "$f" 2>/dev/null || true
+    echo "[init-cdp-profile] patched menu launcher in $f"
+  fi
+}
+
+if [[ -d /config/.config/labwc ]]; then
+  patch_menu_file /config/.config/labwc/menu.xml
+  patch_menu_file /config/.config/labwc/menu.xml.bak
+fi
+
 if ! is_true "$ENABLE_CDP"; then
-  echo "[init-cdp-profile] ENABLE_CDP is false; nothing to prepare."
+  echo "[init-cdp-profile] ENABLE_CDP is false; profile dir prep skipped (menu patch still applied if needed)."
   exit 0
 fi
 
@@ -31,14 +51,12 @@ echo "[init-cdp-profile] preparing CDP_PROFILE_DIR=${CDP_PROFILE_DIR} CDP_LOG_DI
 
 mkdir -p "$CDP_PROFILE_DIR" "$CDP_LOG_DIR"
 
-# Prefer lsiown (recursive, skips already-owned paths). Fall back to chown -R.
 if command -v lsiown >/dev/null 2>&1; then
   lsiown abc:abc "$CDP_PROFILE_DIR" "$CDP_LOG_DIR" || chown -R abc:abc "$CDP_PROFILE_DIR" "$CDP_LOG_DIR"
 else
   chown -R abc:abc "$CDP_PROFILE_DIR" "$CDP_LOG_DIR"
 fi
 
-# Fail early with a clear message if abc still cannot write.
 if ! s6-setuidgid abc touch "${CDP_PROFILE_DIR}/.cdp-write-test" 2>/dev/null; then
   echo "[init-cdp-profile] ERROR: abc cannot write to ${CDP_PROFILE_DIR}"
   ls -ld "$CDP_PROFILE_DIR" /config || true
