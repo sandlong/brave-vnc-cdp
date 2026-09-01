@@ -12,7 +12,9 @@ COPY root/ /
 
 RUN chmod +x \
     /usr/local/bin/start-cdp-chromium.sh \
+    /usr/local/bin/scheduled-container-restart.sh \
     /usr/bin/wrapped-chromium \
     /defaults/autostart \
     /defaults/autostart_wayland \
-    /etc/s6-overlay/s6-rc.d/init-cdp-profile/run
+    /etc/s6-overlay/s6-rc.d/init-cdp-profile/run \
+    /etc/s6-overlay/s6-rc.d/init-restart-cron/run

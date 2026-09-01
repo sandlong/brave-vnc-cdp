@@ -1,0 +1,70 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+
+# Install one managed root-crontab entry for scheduled container recycling.
+# Upstream linuxserver/baseimage already provides init-crontab-config + svc-cron;
+# this init runs after the former and before init-services so svc-cron sees the
+# generated entry on first start.
+
+set -Eeuo pipefail
+
+CONTAINER_RESTART_CRON="${CONTAINER_RESTART_CRON:-}"
+RESTART_COMMAND="/usr/local/bin/scheduled-container-restart.sh"
+MARKER="# chromium-selkies-cdp: managed container restart"
+
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+
+# Preserve user/root jobs imported by upstream, but remove our previous managed
+# line so repeated init runs stay idempotent.
+crontab -l -u root 2>/dev/null | grep -Fv "$MARKER" >"$tmp" || true
+
+install_without_managed_job() {
+  if [[ -s "$tmp" ]]; then
+    crontab -u root "$tmp"
+  else
+    crontab -r -u root 2>/dev/null || true
+  fi
+}
+
+# Trim leading/trailing whitespace while preserving cron punctuation.
+schedule="$(printf '%s' "$CONTAINER_RESTART_CRON" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+
+if [[ -z "$schedule" ]]; then
+  install_without_managed_job
+  echo "[init-restart-cron] CONTAINER_RESTART_CRON is empty; scheduled restart disabled."
+  exit 0
+fi
+
+if [[ "$schedule" == @* ]]; then
+  case "$schedule" in
+    @yearly|@annually|@monthly|@weekly|@daily|@midnight|@hourly)
+      ;;
+    @reboot)
+      echo "[init-restart-cron] ERROR: @reboot is not allowed because it would create a restart loop." >&2
+      exit 1
+      ;;
+    *)
+      echo "[init-restart-cron] ERROR: unsupported cron alias: $schedule" >&2
+      exit 1
+      ;;
+  esac
+else
+  read -r -a cron_fields <<<"$schedule"
+  if [[ "${#cron_fields[@]}" -ne 5 ]]; then
+    echo "[init-restart-cron] ERROR: CONTAINER_RESTART_CRON must contain exactly five cron fields." >&2
+    exit 1
+  fi
+fi
+
+printf '%s %s %s\n' "$schedule" "$RESTART_COMMAND" "$MARKER" >>"$tmp"
+
+# Let Debian crontab perform the authoritative syntax validation before we
+# mutate the live crontab.
+if ! crontab -u root -n "$tmp"; then
+  echo "[init-restart-cron] ERROR: invalid CONTAINER_RESTART_CRON: $schedule" >&2
+  exit 1
+fi
+
+crontab -u root "$tmp"
+echo "[init-restart-cron] scheduled container restart: $schedule (TZ=${TZ:-system default})"

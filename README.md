@@ -3,7 +3,7 @@
 [![Docker publish](https://github.com/sandlong/chromium-selkies-cdp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/sandlong/chromium-selkies-cdp/actions/workflows/docker-publish.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-A very thin downstream image built on top of `lscr.io/linuxserver/chromium`, with one optional extra: enable Chromium CDP and forward it to port `9222` when requested.
+A very thin downstream image built on top of `lscr.io/linuxserver/chromium`, with two optional extras: enable Chromium CDP and forward it to port `9222` when requested, and schedule a periodic container recycle from inside the container.
 
 ## What changed from upstream
 
@@ -23,6 +23,15 @@ When `ENABLE_CDP=false`:
 
 - The container behaves like normal `linuxserver/chromium` via `wrapped-chromium.real`.
 - No CDP listener is started.
+
+When `CONTAINER_RESTART_CRON` is set:
+
+- The image adds one managed entry to root's existing crontab without replacing unrelated cron jobs.
+- The schedule uses standard five-field cron syntax (for example `0 4 * * *`) and the container's `TZ`.
+- At the scheduled time, the job asks s6-overlay to shut the container down cleanly.
+- Docker's restart policy then starts the same container again. No host cron, Docker socket, sidecar, or other scheduler is required.
+
+The container cannot literally recreate itself without talking to the Docker daemon, so a Docker restart policy such as `--restart unless-stopped` (or Compose `restart: unless-stopped`) is required for scheduled restart to complete. `@reboot` is intentionally rejected to prevent a restart loop.
 
 ## One-shot docker run (no pre-created host folders)
 
@@ -51,6 +60,7 @@ docker run -d \
   -e ENABLE_CDP=true \
   -e CDP_PORT=9222 \
   -e CDP_PROFILE_DIR=/config/cdp-profile \
+  -e CONTAINER_RESTART_CRON='0 4 * * *' \
   -p 3000:3000 \
   -p 3001:3001 \
   -p 9222:9222 \
@@ -86,6 +96,7 @@ services:
       CUSTOM_USER: change-me
       PASSWORD: change-me
       ENABLE_CDP: "true"
+      CONTAINER_RESTART_CRON: "0 4 * * *"
     volumes:
       - chromium-config:/config
     restart: unless-stopped
@@ -105,6 +116,9 @@ Named volumes also work; the same single-`/config` rule applies.
 | `CDP_INTERNAL_PORT` | `9223` | Internal loopback CDP port used by Chromium |
 | `CDP_PROFILE_DIR` | `/config/cdp-profile` | Profile path used when CDP is enabled |
 | `CDP_LOG_DIR` | `/config/log` | Log directory for the `socat` forwarder |
+| `CONTAINER_RESTART_CRON` | empty (disabled) | Standard 5-field cron schedule for an in-container graceful recycle; uses `TZ` and requires a Docker restart policy |
+
+`CONTAINER_RESTART_CRON` also accepts the usual non-boot aliases `@yearly`, `@annually`, `@monthly`, `@weekly`, `@daily`, `@midnight`, and `@hourly`. `@reboot` is rejected because it would restart the container immediately after every start.
 
 ## Important upstream variables you will still use
 
