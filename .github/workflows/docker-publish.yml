@@ -77,7 +77,7 @@ jobs:
             type=raw,value=${{ steps.upstream.outputs.tag }}
           labels: |
             org.opencontainers.image.title=chromium-selkies-cdp
-            org.opencontainers.image.description=Thin downstream of linuxserver/chromium with optional CDP forwarding
+            org.opencontainers.image.description=Thin downstream of linuxserver/chromium with optional CDP forwarding and scheduled recycle
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=MIT
             org.opencontainers.image.base.name=lscr.io/linuxserver/chromium:latest
